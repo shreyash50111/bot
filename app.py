@@ -49,6 +49,7 @@ def send_media_message(to, media_id, media_type):
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
+        # Verification challenge
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
         if token == VERIFY_TOKEN:
@@ -57,22 +58,35 @@ def webhook():
 
     if request.method == "POST":
         data = request.json
-        # Example: check for messages
-        if "messages" in data.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {}):
-            messages = data["entry"][0]["changes"][0]["value"]["messages"]
-            for msg in messages:
-                from_number = msg.get("from")
-                body = msg.get("text", {}).get("body")
-                group_id = msg.get("group_id", None)
-                
-                if not ALLOWED_GROUPS or group_id in ALLOWED_GROUPS:
-                    twilio_client.messages.create(
-                        from_=twilio_whatsapp_number,
-                        body=f"From {from_number}: {body}",
-                        to=recipient_number
-                    )
-        return "EVENT_RECEIVED", 200
+        print("Incoming payload:", data)  # Debug: see the structure
 
+        # Navigate the payload to get messages
+        entries = data.get("entry", [])
+        for entry in entries:
+            changes = entry.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+                messages = value.get("messages", [])
+                for msg in messages:
+                    from_number = msg.get("from")
+                    text = msg.get("text", {}).get("body")
+                    group_id = msg.get("group_id")  # optional
+
+                    if text and (not ALLOWED_GROUPS or group_id in ALLOWED_GROUPS):
+                        payload = {
+                            "messaging_product": "whatsapp",
+                            "to": FORWARD_TO,
+                            "type": "text",
+                            "text": {"body": f"From {from_number}: {text}"}
+                        }
+                        headers = {
+                            "Authorization": f"Bearer {ACCESS_TOKEN}",
+                            "Content-Type": "application/json"
+                        }
+                        resp = requests.post(WHATSAPP_API_URL, json=payload, headers=headers)
+                        print("Forward response:", resp.status_code, resp.text)
+
+        return "EVENT_RECEIVED", 200
 # ===== Verification Route =====
 @app.route("/webhook", methods=["GET"])
 def verify():
