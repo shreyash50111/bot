@@ -58,26 +58,32 @@ def webhook():
 
     if request.method == "POST":
         data = request.json
-        print("Incoming payload:", data)  # Debug: see the structure
+        print("Incoming payload:", data)  # Debug: check structure in logs
 
-        # Navigate the payload to get messages
         entries = data.get("entry", [])
         for entry in entries:
             changes = entry.get("changes", [])
             for change in changes:
                 value = change.get("value", {})
                 messages = value.get("messages", [])
+                # Get group info if available
+                group_name = value.get("group_name")  # Sometimes WhatsApp provides this
                 for msg in messages:
                     from_number = msg.get("from")
                     text = msg.get("text", {}).get("body")
                     group_id = msg.get("group_id")  # optional
 
                     if text and (not ALLOWED_GROUPS or group_id in ALLOWED_GROUPS):
+                        body_text = f"From {from_number}"
+                        if group_name:
+                            body_text += f" in group '{group_name}'"
+                        body_text += f": {text}"
+
                         payload = {
                             "messaging_product": "whatsapp",
                             "to": FORWARD_TO,
                             "type": "text",
-                            "text": {"body": f"From {from_number}: {text}"}
+                            "text": {"body": body_text}
                         }
                         headers = {
                             "Authorization": f"Bearer {ACCESS_TOKEN}",
@@ -87,6 +93,7 @@ def webhook():
                         print("Forward response:", resp.status_code, resp.text)
 
         return "EVENT_RECEIVED", 200
+
 # ===== Verification Route =====
 @app.route("/webhook", methods=["GET"])
 def verify():
