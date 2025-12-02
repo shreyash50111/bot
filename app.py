@@ -46,10 +46,12 @@ def send_media_message(to, media_id, media_type):
 
 
 # ===== Webhook Route =====
+# Dictionary to store group_id → group_name
+GROUPS = {}
+
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
-        # Verification challenge
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
         if token == VERIFY_TOKEN:
@@ -58,25 +60,31 @@ def webhook():
 
     if request.method == "POST":
         data = request.json
-        print("Incoming payload:", data)  # Debug: check structure in logs
+        print("Incoming payload:", data)  # Debug
 
         entries = data.get("entry", [])
         for entry in entries:
             changes = entry.get("changes", [])
             for change in changes:
                 value = change.get("value", {})
+
+                # Update group mapping if group info is present
+                group_id = value.get("group_id")
+                group_name = value.get("group_name")
+                if group_id and group_name:
+                    GROUPS[group_id] = group_name
+
                 messages = value.get("messages", [])
-                # Get group info if available
-                group_name = value.get("group_name")  # Sometimes WhatsApp provides this
                 for msg in messages:
                     from_number = msg.get("from")
                     text = msg.get("text", {}).get("body")
-                    group_id = msg.get("group_id")  # optional
+                    msg_group_id = msg.get("group_id")  # optional
 
-                    if text and (not ALLOWED_GROUPS or group_id in ALLOWED_GROUPS):
+                    if text and (not ALLOWED_GROUPS or msg_group_id in ALLOWED_GROUPS):
+                        name = GROUPS.get(msg_group_id, "Unknown Group")
                         body_text = f"From {from_number}"
-                        if group_name:
-                            body_text += f" in group '{group_name}'"
+                        if msg_group_id:
+                            body_text += f" in group '{name}'"
                         body_text += f": {text}"
 
                         payload = {
