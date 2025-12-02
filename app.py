@@ -46,29 +46,32 @@ def send_media_message(to, media_id, media_type):
 
 
 # ===== Webhook Route =====
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    data = request.json
-    if "entry" in data:
-        for entry in data["entry"]:
-            for change in entry.get("changes", []):
-                value = change.get("value", {})
-                messages = value.get("messages", [])
-                for msg in messages:
-                    sender = msg.get("from")
-                    msg_type = msg.get("type")
+    if request.method == "GET":
+        token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
+        if token == VERIFY_TOKEN:
+            return challenge, 200
+        return "Verification failed", 403
 
-                    if ALLOWED_GROUPS and sender not in ALLOWED_GROUPS:
-                        continue
-
-                    if msg_type == "text":
-                        text = msg["text"]["body"]
-                        send_text_message(FORWARD_TO, f"Forwarded: {text}")
-                    elif msg_type in ["image", "video", "document"]:
-                        media_id = msg[msg_type]["id"]
-                        send_media_message(FORWARD_TO, media_id, msg_type)
-    return jsonify(status="ok")
-
+    if request.method == "POST":
+        data = request.json
+        # Example: check for messages
+        if "messages" in data.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {}):
+            messages = data["entry"][0]["changes"][0]["value"]["messages"]
+            for msg in messages:
+                from_number = msg.get("from")
+                body = msg.get("text", {}).get("body")
+                group_id = msg.get("group_id", None)
+                
+                if not ALLOWED_GROUPS or group_id in ALLOWED_GROUPS:
+                    twilio_client.messages.create(
+                        from_=twilio_whatsapp_number,
+                        body=f"From {from_number}: {body}",
+                        to=recipient_number
+                    )
+        return "EVENT_RECEIVED", 200
 
 # ===== Verification Route =====
 @app.route("/webhook", methods=["GET"])
